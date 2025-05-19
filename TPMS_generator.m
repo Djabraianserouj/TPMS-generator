@@ -1,9 +1,10 @@
 clc; clear; close all;
 
-% === Parameters ===
+% === User Settings ===
+tpmsType = 'gyroid';   % Options: 'gyroid', 'schwarz', 'diamond', 'lidinoid', 'neovius'
 domainSize = 40;       % Size of cube in mm
 gridSize = 100;        % Grid resolution (higher = better quality)
-scaleFactor = 1;       % Number of gyroid cells in the domain
+scaleFactor = 2;       % Number of TPMS cells in the domain
 thickness = 0.5;       % Offset level from zero (surface thickness)
 
 % === Coordinate Grid ===
@@ -12,17 +13,39 @@ thickness = 0.5;       % Offset level from zero (surface thickness)
     linspace(0, domainSize, gridSize), ...
     linspace(0, domainSize, gridSize));
 
-% === Gyroid Field Calculation ===
+% === Scale Coordinates ===
 scaledX = x * (2*pi*scaleFactor / domainSize);
 scaledY = y * (2*pi*scaleFactor / domainSize);
 scaledZ = z * (2*pi*scaleFactor / domainSize);
 
-gyroid = sin(scaledX).*cos(scaledY) + ...
-         sin(scaledY).*cos(scaledZ) + ...
-         sin(scaledZ).*cos(scaledX);
+% === TPMS Equation Selection ===
+switch lower(tpmsType)
+    case 'gyroid'
+        field = sin(scaledX).*cos(scaledY) + ...
+                sin(scaledY).*cos(scaledZ) + ...
+                sin(scaledZ).*cos(scaledX);
+    case 'schwarz'
+        field = cos(scaledX) + cos(scaledY) + cos(scaledZ);
+    case 'diamond'
+        field = sin(scaledX).*sin(scaledY).*sin(scaledZ) + ...
+                sin(scaledX).*cos(scaledY).*cos(scaledZ) + ...
+                cos(scaledX).*sin(scaledY).*cos(scaledZ) + ...
+                cos(scaledX).*cos(scaledY).*sin(scaledZ);
+    case 'lidinoid'
+        field = sin(scaledX) .* sin(scaledY) .* sin(scaledZ) + ...
+                sin(scaledX) .* cos(scaledY) .* cos(scaledZ) + ...
+                cos(scaledX) .* sin(scaledY) .* cos(scaledZ) + ...
+                cos(scaledX) .* cos(scaledY) .* sin(scaledZ) - ...
+                sin(scaledX) .* sin(scaledY) - sin(scaledY) .* sin(scaledZ) - sin(scaledZ) .* sin(scaledX);
+    case 'neovius'
+        field = 3 * (cos(scaledX) + cos(scaledY) + cos(scaledZ)) + ...
+                4 * cos(scaledX) .* cos(scaledY) .* cos(scaledZ);
+    otherwise
+        error('Unknown TPMS type selected.');
+end
 
-% === Make Geometry Solid (use thickness offset) ===
-obj = (gyroid - thickness) .* (gyroid + thickness);  % Enclosed "shell"
+% === Make Geometry Solid ===
+obj = (field - thickness) .* (field + thickness);
 
 % === Mesh from Isosurface + Isocaps ===
 [F1, V1] = isosurface(x, y, z, obj, 0);
@@ -37,12 +60,17 @@ p = patch('Faces', F, 'Vertices', V);
 p.FaceColor = 'red';
 p.EdgeColor = 'none';
 daspect([1 1 1]);
-view(3);
-camlight; lighting gouraud;
-title('Watertight Gyroid (40 mm Cube)');
+view(3); camlight; lighting gouraud;
+title(['Watertight ', capitalize(tpmsType), ' (', num2str(domainSize), ' mm Cube)']);
 
 % === Export STL ===
-filename = 'gyroid.stl';
-TR = triangulation(F, V);  % Create triangulation object
-stlwrite(TR, filename);    % Export STL
+filename = [tpmsType, '.stl'];
+TR = triangulation(F, V);
+stlwrite(TR, filename);
 disp(['STL file saved as ', filename]);
+
+% === Utility: Capitalize first letter ===
+function out = capitalize(str)
+    out = lower(str);
+    out(1) = upper(out(1));
+end
